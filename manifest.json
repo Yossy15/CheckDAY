@@ -1,0 +1,25 @@
+{
+  "name": "Daily Calendar",
+  "short_name": "Calendar",
+  "description": "ปฏิทินสำหรับเช็กวันที่ทำสำเร็จ",
+  "lang": "th",
+  "dir": "ltr",
+
+  "start_url": "./",
+  "scope": "./",
+
+  "display": "standalone",
+  "orientation": "portrait",
+
+  "background_color": "#f8fafc",
+  "theme_color": "#f8fafc",
+
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
