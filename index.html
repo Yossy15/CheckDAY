@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Calendar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;min-height:100vh;
+      background:radial-gradient(circle at top left,rgba(59,130,246,.10),transparent 32%),
+                 radial-gradient(circle at top right,rgba(168,85,247,.08),transparent 30%),#f8fafc;
+      color:#0f172a;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+    }
+    button{-webkit-tap-highlight-color:transparent}
+    .glass{background:rgba(255,255,255,.86);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+    .calendar-cell{
+      position:relative;width:100%;aspect-ratio:1/1;padding:0;border-radius:16px;
+      background:rgba(255,255,255,.94);border:1px solid #e2e8f0;overflow:hidden;cursor:pointer;
+      transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease,background .18s ease
+    }
+    .calendar-cell:hover:not(:disabled){transform:translateY(-2px);border-color:#cbd5e1;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+    .calendar-cell:active:not(:disabled){transform:scale(.96)}
+    .calendar-cell:disabled{cursor:default;background:#f1f5f9;color:#cbd5e1;border-color:#e2e8f0}
+    .calendar-cell.is-checked{background:rgba(255,255,255,.98)}
+    .calendar-cell.is-today{border-color:#94a3b8;box-shadow:0 0 0 2px rgba(148,163,184,.16)}
+    .date-number{position:absolute;top:7px;left:8px;z-index:5;font-size:12px;line-height:1;font-weight:700;color:#334155;pointer-events:none}
+    .calendar-cell:disabled .date-number{color:#cbd5e1}
+    .marker-canvas{position:absolute;left:23%;top:27%;width:54%;height:54%;display:block;pointer-events:none;z-index:2}
+    .today-focus{animation:todayFocus .8s ease}
+    @keyframes todayFocus{0%{box-shadow:0 0 0 0 rgba(59,130,246,0)}30%{box-shadow:0 0 0 5px rgba(59,130,246,.25)}100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}}
+    .modal-backdrop{
+      position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;
+      background:rgba(15,23,42,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+      opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s ease,visibility .2s ease
+    }
+    .modal-backdrop.is-open{opacity:1;visibility:visible;pointer-events:auto}
+    .modal-panel{
+      width:min(420px,100%);max-height:min(720px,calc(100vh - 40px));overflow-y:auto;background:#fff;
+      border-radius:24px;box-shadow:0 24px 80px rgba(15,23,42,.22);
+      transform:translateY(14px) scale(.97);transition:transform .22s ease
+    }
+    .modal-backdrop.is-open .modal-panel{transform:translateY(0) scale(1)}
+    .option-button{position:relative;display:flex;align-items:center;justify-content:center;min-height:52px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;transition:transform .16s ease,border-color .16s ease,background .16s ease}
+    .option-button:hover{transform:translateY(-1px);border-color:#cbd5e1}
+    .option-button.is-selected{border-color:#2563eb;background:#eff6ff;box-shadow:inset 0 0 0 1px #2563eb}
+    .color-dot{width:22px;height:22px;flex:0 0 auto;border-radius:999px;display:inline-block;border:3px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.12)}
+    .context-menu{
+      position:fixed;z-index:90;width:min(280px,calc(100vw - 24px));max-height:min(520px,calc(100vh - 24px));overflow-y:auto;
+      background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:14px;box-shadow:0 18px 60px rgba(15,23,42,.18);
+      opacity:0;visibility:hidden;pointer-events:none;transform:scale(.96);transform-origin:top left;
+      transition:opacity .16s ease,visibility .16s ease,transform .16s ease
+    }
+    .context-menu.is-open{opacity:1;visibility:visible;pointer-events:auto;transform:scale(1)}
+    .context-option{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:11px;font-size:13px;transition:background .15s ease}
+    .context-option:hover{background:#f8fafc}
+    .context-option.is-selected{background:#eff6ff;color:#1d4ed8;font-weight:700}
+    .stat-number{font-variant-numeric:tabular-nums}
+    .fade-in{animation:fadeIn .35s ease both}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+    @media(max-width:480px){
+      .calendar-cell{border-radius:12px}
+      .date-number{top:6px;left:7px;font-size:11px}
+      .marker-canvas{left:24%;top:28%;width:52%;height:52%}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
+    }
+  </style>
+</head>
+<body>
+<main class="min-h-screen px-4 py-5 sm:px-6 sm:py-8">
+  <div class="mx-auto w-full max-w-2xl">
+    <header class="mb-5">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Daily Calendar</h1>
+          <p class="mt-1 text-sm text-slate-500">เช็กทุกวันที่ทำสำเร็จ</p>
+        </div>
+        <button id="settingsBtn" type="button" class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-95">รูปแบบ</button>
+      </div>
+    </header>
+
+    <section class="mb-5 grid grid-cols-2 gap-3">
+      <div class="glass rounded-2xl border border-white/70 p-4 shadow-sm">
+        <div class="text-xs font-semibold text-slate-500">เช็กแล้ว</div>
+        <div id="checkedCount" class="stat-number mt-1 text-2xl font-black text-slate-900">0</div>
+      </div>
+      <div class="glass rounded-2xl border border-white/70 p-4 shadow-sm">
+        <div class="text-xs font-semibold text-slate-500">ยังไม่เช็ก</div>
+        <div id="uncheckedCount" class="stat-number mt-1 text-2xl font-black text-slate-900">0</div>
+      </div>
+    </section>
+
+    <section class="glass rounded-3xl border border-white/70 p-4 shadow-xl shadow-slate-200/60 sm:p-5">
+      <div class="mb-4 grid grid-cols-[44px_1fr_44px] items-center gap-2">
+        <button id="prevMonth" type="button" aria-label="เดือนก่อนหน้า" class="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-2xl font-light text-slate-700 transition hover:bg-slate-50 active:scale-95">‹</button>
+        <div class="min-w-0 text-center">
+          <div id="monthLabel" class="truncate text-base font-black text-slate-900 sm:text-lg">-</div>
+          <button id="todayBtn" type="button" class="mt-1 text-xs font-semibold text-blue-600 transition hover:text-blue-700 hover:underline">กลับไปวันที่ปัจจุบัน</button>
+        </div>
+        <button id="nextMonth" type="button" aria-label="เดือนถัดไป" class="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-2xl font-light text-slate-700 transition hover:bg-slate-50 active:scale-95">›</button>
+      </div>
+
+      <div class="mb-2 grid grid-cols-7 gap-1.5 sm:gap-2" aria-hidden="true">
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">อา</div>
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">จ</div>
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">อ</div>
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">พ</div>
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">พฤ</div>
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">ศ</div>
+        <div class="weekday text-center text-[11px] font-bold text-slate-500 py-1">ส</div>
+      </div>
+
+      <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 sm:gap-2"></div>
+
+      <div class="mt-5 border-t border-slate-100 pt-4">
+        <button id="clearMonth" type="button" class="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 transition hover:bg-red-100 active:scale-[0.99]">ล้างการเช็กเดือนนี้</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div id="settingsModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+      <div>
+        <h2 id="settingsTitle" class="text-lg font-black text-slate-900">รูปแบบ</h2>
+        <p class="mt-0.5 text-xs text-slate-500">ใช้เป็นค่าเริ่มต้นสำหรับวันที่เช็กใหม่</p>
+      </div>
+      <button id="closeSettings" type="button" aria-label="ปิด" class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-lg text-slate-600 transition hover:bg-slate-200 active:scale-95">×</button>
+    </div>
+    <div class="space-y-6 p-5">
+      <section>
+        <div class="mb-3">
+          <h3 class="text-sm font-black text-slate-800">ตัวเช็ก</h3>
+          <p class="mt-1 text-xs text-slate-500">เลือกรูปแบบที่จะใช้กับวันที่เช็กใหม่</p>
+        </div>
+        <div id="settingsStyleOptions" class="grid grid-cols-2 gap-2"></div>
+      </section>
+      <section>
+        <div class="mb-3">
+          <h3 class="text-sm font-black text-slate-800">สี</h3>
+          <p class="mt-1 text-xs text-slate-500">เลือกสีที่จะใช้กับวันที่เช็กใหม่</p>
+        </div>
+        <div id="settingsColorOptions" class="grid grid-cols-2 gap-2"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="contextMenu" class="context-menu" aria-hidden="true">
+  <div class="mb-3">
+    <div id="contextDateLabel" class="text-sm font-black text-slate-900">-</div>
+    <div class="mt-0.5 text-xs text-slate-500">ตั้งค่าเฉพาะวันนี้</div>
+  </div>
+  <div class="mb-3">
+    <div class="mb-2 text-xs font-bold text-slate-500">ตัวเช็ก</div>
+    <div id="contextStyleOptions" class="space-y-1"></div>
+  </div>
+  <div>
+    <div class="mb-2 text-xs font-bold text-slate-500">สี</div>
+    <div id="contextColorOptions" class="space-y-1"></div>
+  </div>
+</div>
+
+<div id="clearConfirmModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal-panel max-w-sm" role="dialog" aria-modal="true" aria-labelledby="clearConfirmTitle">
+    <div class="p-5">
+      <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path>
+        </svg>
+      </div>
+      <h2 id="clearConfirmTitle" class="text-lg font-black text-slate-900">ล้างการเช็กเดือนนี้?</h2>
+      <p id="clearConfirmText" class="mt-2 text-sm leading-6 text-slate-500">-</p>
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <button id="cancelClear" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">ยกเลิก</button>
+        <button id="confirmClear" type="button" class="rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-700 active:scale-[0.98]">ล้างข้อมูล</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const STORAGE_KEY="daily-calendar-checks-v6";
+const LONG_PRESS_DURATION=500;
+const CANVAS_SIZE=72;
+
+const COLORS={red:"#ef4444",green:"#22c55e",blue:"#3b82f6",purple:"#a855f7"};
+
+const MARKERS={
+  x:{label:"กากบาท",symbol:"×"},
+  check:{label:"เครื่องหมายถูก",symbol:"✓"},
+  dot:{label:"จุด",symbol:"●"},
+  circle:{label:"วงกลม",symbol:"○"},
+  star:{label:"ดาว",symbol:"★"},
+  heart:{label:"หัวใจ",symbol:"♥"},
+  line:{label:"เส้น",symbol:"—"},
+  diamond:{label:"ข้าวหลามตัด",symbol:"◇"}
+};
+
+const THAI_MONTHS=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const COLOR_LABELS={red:"แดง",green:"เขียว",blue:"น้ำเงิน",purple:"ม่วง"};
+
+const calendarGrid=document.getElementById("calendarGrid");
+const monthLabel=document.getElementById("monthLabel");
+const checkedCount=document.getElementById("checkedCount");
+const uncheckedCount=document.getElementById("uncheckedCount");
+const prevMonth=document.getElementById("prevMonth");
+const nextMonth=document.getElementById("nextMonth");
+const todayBtn=document.getElementById("todayBtn");
+const clearMonth=document.getElementById("clearMonth");
+const settingsBtn=document.getElementById("settingsBtn");
+const settingsModal=document.getElementById("settingsModal");
+const closeSettings=document.getElementById("closeSettings");
+const settingsStyleOptions=document.getElementById("settingsStyleOptions");
+const settingsColorOptions=document.getElementById("settingsColorOptions");
+const contextMenu=document.getElementById("contextMenu");
+const contextDateLabel=document.getElementById("contextDateLabel");
+const contextStyleOptions=document.getElementById("contextStyleOptions");
+const contextColorOptions=document.getElementById("contextColorOptions");
+const clearConfirmModal=document.getElementById("clearConfirmModal");
+const clearConfirmText=document.getElementById("clearConfirmText");
+const cancelClear=document.getElementById("cancelClear");
+const confirmClear=document.getElementById("confirmClear");
+
+const now=new Date();
+const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+const TODAY_KEY=makeDateKey(today.getFullYear(),today.getMonth(),today.getDate());
+
+let viewDate=new Date(today.getFullYear(),today.getMonth(),1);
+let data=loadData();
+let activeContextDateKey=null;
+let pendingClearKeys=[];
+
+function makeDateKey(year,month,day){
+  return `${String(year).padStart(4,"0")}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+}
+
+function parseDateKey(key){
+  const parts=key.split("-");
+  if(parts.length!==3)return null;
+  const year=Number(parts[0]),month=Number(parts[1])-1,day=Number(parts[2]);
+  if(!Number.isInteger(year)||!Number.isInteger(month)||!Number.isInteger(day))return null;
+  return new Date(year,month,day);
+}
+
+function isValidStyle(style){return Object.prototype.hasOwnProperty.call(MARKERS,style)}
+function isValidColor(color){return Object.prototype.hasOwnProperty.call(COLORS,color)}
+
+function normalizeEntry(entry){
+  if(entry===true)return{style:"x",color:"blue"};
+  if(!entry||typeof entry!=="object")return null;
+  return{
+    style:isValidStyle(entry.style)?entry.style:"x",
+    color:isValidColor(entry.color)?entry.color:"blue"
+  };
+}
+
+function loadData(){
+  const fallback={settings:{defaultStyle:"x",defaultColor:"blue"},dates:{}};
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw)return fallback;
+    const parsed=JSON.parse(raw);
+    if(!parsed||typeof parsed!=="object")return fallback;
+    const result={
+      settings:{
+        defaultStyle:isValidStyle(parsed.settings?.defaultStyle)?parsed.settings.defaultStyle:"x",
+        defaultColor:isValidColor(parsed.settings?.defaultColor)?parsed.settings.defaultColor:"blue"
+      },
+      dates:{}
+    };
+    if(parsed.dates&&typeof parsed.dates==="object"){
+      Object.entries(parsed.dates).forEach(([key,value])=>{
+        const normalized=normalizeEntry(value);
+        if(normalized)result.dates[key]=normalized;
+      });
+    }
+    return result;
+  }catch(error){
+    console.error("Cannot load calendar data:",error);
+    return fallback;
+  }
+}
+
+function saveData(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data))}
+  catch(error){console.error("Cannot save calendar data:",error)}
+}
+
+function getDaysInMonth(year,month){return new Date(year,month+1,0).getDate()}
+function isFutureKey(key){return key>TODAY_KEY}
+
+function formatThaiDate(key){
+  const date=parseDateKey(key);
+  if(!date)return key;
+  return `${date.getDate()} ${THAI_MONTHS[date.getMonth()]} ${date.getFullYear()+543}`;
+}
+
+function setupCanvas(canvas){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=CANVAS_SIZE*dpr;
+  canvas.height=CANVAS_SIZE*dpr;
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineCap="round";
+  ctx.lineJoin="round";
+  return ctx;
+}
+
+function clearCanvas(ctx){ctx.clearRect(0,0,CANVAS_SIZE,CANVAS_SIZE)}
+
+function drawPartialLine(ctx,x1,y1,x2,y2,progress){
+  const p=Math.max(0,Math.min(1,progress));
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x1+(x2-x1)*p,y1+(y2-y1)*p);
+}
+
+function drawMarker(ctx,style,color,progress=1){
+  clearCanvas(ctx);
+  const p=Math.max(0,Math.min(1,progress));
+  if(!isValidStyle(style)||!isValidColor(color))return;
+
+  ctx.strokeStyle=COLORS[color];
+  ctx.fillStyle=COLORS[color];
+  ctx.lineWidth=6;
+
+  const cx=CANVAS_SIZE/2,cy=CANVAS_SIZE/2;
+
+  if(style==="x"){
+    ctx.beginPath();
+    drawPartialLine(ctx,15,15,57,57,Math.min(1,p*2));
+    if(p>0.5)drawPartialLine(ctx,57,15,15,57,(p-0.5)*2);
+    ctx.stroke();
+    return;
+  }
+
+  if(style==="check"){
+    ctx.beginPath();
+    drawPartialLine(ctx,12,37,29,52,Math.min(1,p*2));
+    if(p>0.5)drawPartialLine(ctx,29,52,59,18,(p-0.5)*2);
+    ctx.stroke();
+    return;
+  }
+
+  if(style==="dot"){
+    ctx.beginPath();
+    ctx.arc(cx,cy,19*p,0,Math.PI*2);
+    ctx.fill();
+    return;
+  }
+
+  if(style==="circle"){
+    ctx.beginPath();
+    ctx.arc(cx,cy,22,-Math.PI/2,-Math.PI/2+Math.PI*2*p);
+    ctx.stroke();
+    return;
+  }
+
+  if(style==="line"){
+    ctx.beginPath();
+    drawPartialLine(ctx,12,cy,60,cy,p);
+    ctx.stroke();
+    return;
+  }
+
+  if(style==="diamond"){
+    const points=[[cx,10],[60,cy],[cx,62],[12,cy]];
+    ctx.beginPath();
+    ctx.moveTo(points[0][0],points[0][1]);
+    const segments=points.length,scaled=p*segments,complete=Math.floor(scaled),partial=scaled-complete;
+    for(let i=0;i<complete;i++){
+      const b=points[(i+1)%segments];
+      ctx.lineTo(b[0],b[1]);
+    }
+    if(complete<segments){
+      const a=points[complete%segments],b=points[(complete+1)%segments];
+      ctx.lineTo(a[0]+(b[0]-a[0])*partial,a[1]+(b[1]-a[1])*partial);
+    }
+    ctx.stroke();
+    return;
+  }
+
+  if(style==="star"){
+    const points=10,outerRadius=27,innerRadius=12,scaled=p*points,complete=Math.floor(scaled),partial=scaled-complete;
+    function getStarPoint(index){
+      const angle=-Math.PI/2+index*Math.PI/5;
+      const radius=index%2===0?outerRadius:innerRadius;
+      return[cx+Math.cos(angle)*radius,cy+Math.sin(angle)*radius];
+    }
+    ctx.beginPath();
+    const first=getStarPoint(0);
+    ctx.moveTo(first[0],first[1]);
+    for(let i=1;i<=complete;i++){
+      const point=getStarPoint(i%points);
+      ctx.lineTo(point[0],point[1]);
+    }
+    if(complete<points){
+      const a=getStarPoint(complete%points),b=getStarPoint((complete+1)%points);
+      ctx.lineTo(a[0]+(b[0]-a[0])*partial,a[1]+(b[1]-a[1])*partial);
+    }
+    ctx.stroke();
+    return;
+  }
+
+  if(style==="heart"){
+    const path=new Path2D();
+    path.moveTo(cx,58);
+    path.bezierCurveTo(5,38,11,20,24,18);
+    path.bezierCurveTo(34,16,38,24,cx,31);
+    path.bezierCurveTo(50,24,54,16,64,18);
+    path.bezierCurveTo(77,20,83,38,cx,58);
+    ctx.stroke(path);
+  }
+}
+
+function animateMarker(canvas,style,color,reverse=false,onComplete=null){
+  const ctx=canvas._ctx||setupCanvas(canvas);
+  canvas._ctx=ctx;
+  if(canvas._raf)cancelAnimationFrame(canvas._raf);
+
+  const reduceMotion=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(reduceMotion){
+    drawMarker(ctx,style,color,reverse?0:1);
+    if(onComplete)onComplete();
+    return;
+  }
+
+  const duration=420,startTime=performance.now();
+  function easeOutCubic(t){return 1-Math.pow(1-t,3)}
+  function frame(nowTime){
+    const raw=Math.min(1,(nowTime-startTime)/duration);
+    const eased=easeOutCubic(raw);
+    drawMarker(ctx,style,color,reverse?1-eased:eased);
+    if(raw<1)canvas._raf=requestAnimationFrame(frame);
+    else{canvas._raf=null;if(onComplete)onComplete()}
+  }
+  canvas._raf=requestAnimationFrame(frame);
+}
+
+function renderCalendar(){
+  const year=viewDate.getFullYear(),month=viewDate.getMonth();
+  monthLabel.textContent=`${THAI_MONTHS[month]} ${year+543}`;
+  calendarGrid.innerHTML="";
+
+  const firstDay=new Date(year,month,1).getDay();
+  const days=getDaysInMonth(year,month);
+
+  for(let i=0;i<firstDay;i++){
+    const empty=document.createElement("div");
+    empty.setAttribute("aria-hidden","true");
+    calendarGrid.appendChild(empty);
+  }
+
+  for(let day=1;day<=days;day++){
+    const key=makeDateKey(year,month,day);
+    calendarGrid.appendChild(createDateCell(key,day));
+  }
+
+  updateStats();
+}
+
+function createDateCell(key,day){
+  const button=document.createElement("button");
+  button.type="button";
+  button.className="calendar-cell fade-in";
+  button.dataset.dateKey=key;
+
+  const number=document.createElement("span");
+  number.className="date-number";
+  number.textContent=day;
+  button.appendChild(number);
+
+  const future=isFutureKey(key);
+  if(future)button.disabled=true;
+  if(key===TODAY_KEY)button.classList.add("is-today");
+
+  const entry=data.dates[key];
+
+  if(entry){
+    button.classList.add("is-checked");
+    const canvas=document.createElement("canvas");
+    canvas.className="marker-canvas";
+    button.appendChild(canvas);
+    const ctx=setupCanvas(canvas);
+    canvas._ctx=ctx;
+    drawMarker(ctx,entry.style,entry.color,1);
+  }
+
+  setupDateInteractions(button,key);
+  return button;
+}
+
+function refreshDateCell(key){
+  const oldCell=calendarGrid.querySelector(`[data-date-key="${key}"]`);
+  if(!oldCell)return;
+  const date=parseDateKey(key);
+  if(!date)return;
+  oldCell.replaceWith(createDateCell(key,date.getDate()));
+}
+
+function setupDateInteractions(button,key){
+  if(isFutureKey(key))return;
+
+  let pressTimer=null,longPressed=false;
+
+  const startPress=()=>{
+    longPressed=false;
+    pressTimer=setTimeout(()=>{
+      longPressed=true;
+      openContextMenu(key,button);
+    },LONG_PRESS_DURATION);
+  };
+
+  const cancelPress=()=>{
+    if(pressTimer){
+      clearTimeout(pressTimer);
+      pressTimer=null;
+    }
+  };
+
+  button.addEventListener("pointerdown",event=>{
+    if(event.pointerType==="mouse"&&event.button!==0)return;
+    startPress();
+  });
+
+  button.addEventListener("pointerup",event=>{
+    cancelPress();
+    if(longPressed){event.preventDefault();return}
+    toggleDate(key);
+  });
+
+  button.addEventListener("pointerleave",cancelPress);
+  button.addEventListener("pointercancel",cancelPress);
+  button.addEventListener("contextmenu",event=>event.preventDefault());
+}
+
+function toggleDate(key){
+  if(isFutureKey(key))return;
+  if(data.dates[key])uncCheckDate(key);
+  else checkDate(key);
+}
+
+function checkDate(key){
+  if(isFutureKey(key))return;
+
+  const entry={style:data.settings.defaultStyle,color:data.settings.defaultColor};
+  data.dates[key]=entry;
+  saveData();
+
+  const cell=calendarGrid.querySelector(`[data-date-key="${key}"]`);
+  if(!cell){renderCalendar();return}
+
+  cell.classList.add("is-checked");
+  const existingCanvas=cell.querySelector(".marker-canvas");
+  if(existingCanvas)existingCanvas.remove();
+
+  const canvas=document.createElement("canvas");
+  canvas.className="marker-canvas";
+  cell.appendChild(canvas);
+
+  const ctx=setupCanvas(canvas);
+  canvas._ctx=ctx;
+  animateMarker(canvas,entry.style,entry.color,false);
+  updateStats();
+}
+
+function uncCheckDate(key){
+  const entry=data.dates[key];
+  if(!entry)return;
+
+  const cell=calendarGrid.querySelector(`[data-date-key="${key}"]`);
+  if(!cell){
+    delete data.dates[key];
+    saveData();
+    updateStats();
+    return;
+  }
+
+  const canvas=cell.querySelector(".marker-canvas");
+  if(!canvas){
+    delete data.dates[key];
+    saveData();
+    refreshDateCell(key);
+    updateStats();
+    return;
+  }
+
+  animateMarker(canvas,entry.style,entry.color,true,()=>{
+    delete data.dates[key];
+    saveData();
+    refreshDateCell(key);
+    updateStats();
+  });
+}
+
+function updateStats(){
+  const year=viewDate.getFullYear(),month=viewDate.getMonth(),days=getDaysInMonth(year,month);
+  let checked=0,eligible=0;
+
+  for(let day=1;day<=days;day++){
+    const key=makeDateKey(year,month,day);
+    if(isFutureKey(key))continue;
+    eligible++;
+    if(data.dates[key])checked++;
+  }
+
+  checkedCount.textContent=checked;
+  uncheckedCount.textContent=Math.max(0,eligible-checked);
+}
+
+function openSettings(){
+  renderSettingsOptions();
+  settingsModal.classList.add("is-open");
+  settingsModal.setAttribute("aria-hidden","false");
+}
+
+function closeSettingsModal(){
+  settingsModal.classList.remove("is-open");
+  settingsModal.setAttribute("aria-hidden","true");
+}
+
+function renderSettingsOptions(){
+  settingsStyleOptions.innerHTML="";
+  Object.entries(MARKERS).forEach(([key,marker])=>{
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="option-button";
+    if(data.settings.defaultStyle===key)button.classList.add("is-selected");
+    button.innerHTML=`<span class="mr-2 text-2xl leading-none">${marker.symbol}</span><span class="text-sm font-bold">${marker.label}</span>`;
+    button.addEventListener("click",()=>{
+      data.settings.defaultStyle=key;
+      saveData();
+      renderSettingsOptions();
+    });
+    settingsStyleOptions.appendChild(button);
+  });
+
+  settingsColorOptions.innerHTML="";
+  Object.entries(COLORS).forEach(([key,color])=>{
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="option-button";
+    if(data.settings.defaultColor===key)button.classList.add("is-selected");
+    button.innerHTML=`<span class="color-dot" style="background:${color}"></span><span class="text-sm font-bold">${COLOR_LABELS[key]}</span>`;
+    button.addEventListener("click",()=>{
+      data.settings.defaultColor=key;
+      saveData();
+      renderSettingsOptions();
+    });
+    settingsColorOptions.appendChild(button);
+  });
+}
+
+function openContextMenu(key,button){
+  activeContextDateKey=key;
+  contextDateLabel.textContent=formatThaiDate(key);
+  renderContextOptions();
+  contextMenu.classList.add("is-open");
+  contextMenu.setAttribute("aria-hidden","false");
+  positionContextMenu(button);
+}
+
+function closeContextMenu(){
+  activeContextDateKey=null;
+  contextMenu.classList.remove("is-open");
+  contextMenu.setAttribute("aria-hidden","true");
+}
+
+function positionContextMenu(button){
+  const rect=button.getBoundingClientRect();
+  const menuWidth=contextMenu.offsetWidth,menuHeight=contextMenu.offsetHeight,margin=8;
+  let left=rect.left,top=rect.bottom+margin;
+
+  if(left+menuWidth>window.innerWidth-margin)left=window.innerWidth-menuWidth-margin;
+  if(left<margin)left=margin;
+  if(top+menuHeight>window.innerHeight-margin)top=rect.top-menuHeight-margin;
+  if(top<margin)top=margin;
+
+  contextMenu.style.left=`${left}px`;
+  contextMenu.style.top=`${top}px`;
+}
+
+function renderContextOptions(){
+  if(!activeContextDateKey)return;
+
+  const entry=data.dates[activeContextDateKey]||{
+    style:data.settings.defaultStyle,
+    color:data.settings.defaultColor
+  };
+
+  contextStyleOptions.innerHTML="";
+  Object.entries(MARKERS).forEach(([key,marker])=>{
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="context-option";
+    if(entry.style===key)button.classList.add("is-selected");
+    button.innerHTML=`<span class="w-7 text-center text-lg">${marker.symbol}</span><span>${marker.label}</span>`;
+    button.addEventListener("click",()=>updateDateStyle(activeContextDateKey,key));
+    contextStyleOptions.appendChild(button);
+  });
+
+  contextColorOptions.innerHTML="";
+  Object.entries(COLORS).forEach(([key,color])=>{
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="context-option";
+    if(entry.color===key)button.classList.add("is-selected");
+    button.innerHTML=`<span class="color-dot" style="width:18px;height:18px;background:${color}"></span><span>${COLOR_LABELS[key]}</span>`;
+    button.addEventListener("click",()=>updateDateColor(activeContextDateKey,key));
+    contextColorOptions.appendChild(button);
+  });
+}
+
+function ensureDateEntry(key){
+  if(!data.dates[key]){
+    data.dates[key]={
+      style:data.settings.defaultStyle,
+      color:data.settings.defaultColor
+    };
+  }
+  return data.dates[key];
+}
+
+function updateDateStyle(key,style){
+  if(!isValidStyle(style)||isFutureKey(key))return;
+  const entry=ensureDateEntry(key);
+  entry.style=style;
+  saveData();
+  refreshDateCell(key);
+  renderContextOptions();
+  updateStats();
+}
+
+function updateDateColor(key,color){
+  if(!isValidColor(color)||isFutureKey(key))return;
+  const entry=ensureDateEntry(key);
+  entry.color=color;
+  saveData();
+  refreshDateCell(key);
+  renderContextOptions();
+  updateStats();
+}
+
+prevMonth.addEventListener("click",()=>{
+  viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()-1,1);
+  closeContextMenu();
+  renderCalendar();
+});
+
+nextMonth.addEventListener("click",()=>{
+  viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,1);
+  closeContextMenu();
+  renderCalendar();
+});
+
+todayBtn.addEventListener("click",()=>{
+  viewDate=new Date(today.getFullYear(),today.getMonth(),1);
+  closeContextMenu();
+  renderCalendar();
+
+  requestAnimationFrame(()=>{
+    const cell=calendarGrid.querySelector(`[data-date-key="${TODAY_KEY}"]`);
+    if(!cell)return;
+    cell.scrollIntoView({behavior:"smooth",block:"center"});
+    cell.classList.remove("today-focus");
+    void cell.offsetWidth;
+    cell.classList.add("today-focus");
+    setTimeout(()=>cell.classList.remove("today-focus"),800);
+  });
+});
+
+settingsBtn.addEventListener("click",openSettings);
+closeSettings.addEventListener("click",closeSettingsModal);
+settingsModal.addEventListener("click",event=>{
+  if(event.target===settingsModal)closeSettingsModal();
+});
+
+function getCurrentMonthCheckedKeys(){
+  const year=viewDate.getFullYear(),month=viewDate.getMonth(),days=getDaysInMonth(year,month),keys=[];
+  for(let day=1;day<=days;day++){
+    const key=makeDateKey(year,month,day);
+    if(data.dates[key])keys.push(key);
+  }
+  return keys;
+}
+
+function openClearConfirm(){
+  const keys=getCurrentMonthCheckedKeys();
+  if(keys.length===0){
+    pendingClearKeys=[];
+    clearConfirmText.textContent="เดือนนี้ยังไม่มีวันที่ถูกเช็ก";
+    confirmClear.disabled=true;
+    confirmClear.classList.add("opacity-50","cursor-not-allowed");
+  }else{
+    pendingClearKeys=keys;
+    const year=viewDate.getFullYear(),month=viewDate.getMonth();
+    clearConfirmText.textContent=`ต้องการล้างการเช็ก ${keys.length} วันที่ของเดือน ${THAI_MONTHS[month]} ${year+543} หรือไม่`;
+    confirmClear.disabled=false;
+    confirmClear.classList.remove("opacity-50","cursor-not-allowed");
+  }
+
+  clearConfirmModal.classList.add("is-open");
+  clearConfirmModal.setAttribute("aria-hidden","false");
+}
+
+function closeClearConfirm(){
+  pendingClearKeys=[];
+  clearConfirmModal.classList.remove("is-open");
+  clearConfirmModal.setAttribute("aria-hidden","true");
+  confirmClear.disabled=false;
+  confirmClear.classList.remove("opacity-50","cursor-not-allowed");
+}
+
+clearMonth.addEventListener("click",openClearConfirm);
+cancelClear.addEventListener("click",closeClearConfirm);
+
+confirmClear.addEventListener("click",()=>{
+  if(pendingClearKeys.length===0)return;
+  pendingClearKeys.forEach(key=>delete data.dates[key]);
+  saveData();
+  closeClearConfirm();
+  renderCalendar();
+});
+
+clearConfirmModal.addEventListener("click",event=>{
+  if(event.target===clearConfirmModal)closeClearConfirm();
+});
+
+document.addEventListener("pointerdown",event=>{
+  if(
+    contextMenu.classList.contains("is-open") &&
+    !contextMenu.contains(event.target) &&
+    !event.target.closest(".calendar-cell")
+  ){
+    closeContextMenu();
+  }
+});
+
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"){
+    closeSettingsModal();
+    closeContextMenu();
+    closeClearConfirm();
+    return;
+  }
+
+  if(settingsModal.classList.contains("is-open")||clearConfirmModal.classList.contains("is-open"))return;
+
+  if(event.key==="ArrowLeft"){
+    viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()-1,1);
+    closeContextMenu();
+    renderCalendar();
+  }
+
+  if(event.key==="ArrowRight"){
+    viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,1);
+    closeContextMenu();
+    renderCalendar();
+  }
+});
+
+window.addEventListener("resize",()=>{
+  if(!contextMenu.classList.contains("is-open")||!activeContextDateKey)return;
+  const cell=calendarGrid.querySelector(`[data-date-key="${activeContextDateKey}"]`);
+  if(cell)positionContextMenu(cell);
+});
+
+renderSettingsOptions();
+renderContextOptions();
+renderCalendar();
+</script>
+</body>
+</html>
